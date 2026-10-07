@@ -1,0 +1,65 @@
+# Local test topology. Mirrors the Railway service graph:
+#   db   -> PostgreSQL 15 (own volume, private)
+#   web  -> WYGIWYH, the stock image unmodified (gunicorn + procrastinate worker under supervisord), the only public service
+name: wygiwyh-railway-test
+
+networks:
+  default:
+    name: wygiwyh-railway-test
+
+services:
+  db:
+    image: postgres:15.19-bookworm@sha256:d4a8e1f88f475ee3e0137fa89d21ebc59f6c6ab16bf369ee92907607cc3455ae
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: wygiwyh
+      POSTGRES_PASSWORD: local-test-only-postgres-password
+      POSTGRES_DB: wygiwyh
+      # Data in a sub-directory of the volume (the image's VOLUME is /var/lib/postgresql/data, which would otherwise
+      # shadow it with an anonymous volume locally; on Railway the volume root also holds lost+found).
+      PGDATA: /var/lib/postgresql/pgdata
+    volumes:
+      - pg:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U wygiwyh -d wygiwyh']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  web:
+    image: eitchtee/wygiwyh:0.23.2@sha256:64b02913916b60df21dcb70a7d44d98c20d8d5e46690e0ea5cad2d3e828bbd2b
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+    # Same as the Railway template: start as root (RAILWAY_RUN_UID=0 there), hand the attachments volume to the
+    # image's "app" user, then run the stock entrypoint (supervisord drops gunicorn and the worker to "app").
+    user: '0'
+    command: ['sh', '-c', 'chown -R app:app /usr/src/app/attachments && exec /start-single']
+    environment:
+      ADMIN_EMAIL: ${WYG_TEST_ADMIN_EMAIL:-admin@example.com}
+      ADMIN_PASSWORD: ${WYG_TEST_ADMIN_PASSWORD:-local-test-only-admin-password}
+      SECRET_KEY: local-test-only-secret-key-0123456789abcdefghijklmnopqrstuvwxyz
+      URL: http://127.0.0.1:${WYG_TEST_PORT:-18000}
+      DJANGO_ALLOWED_HOSTS: 127.0.0.1 localhost
+      # Local tests run over plain http, so the Secure session cookie is off here; the template sets true.
+      HTTPS_ENABLED: 'false'
+      DEBUG: 'false'
+      SQL_HOST: db
+      SQL_PORT: '5432'
+      SQL_DATABASE: wygiwyh
+      SQL_USER: wygiwyh
+      SQL_PASSWORD: local-test-only-postgres-password
+      INTERNAL_PORT: '8000'
+      PORT: '8000'
+      TZ: UTC
+      WEB_CONCURRENCY: '2'
+      TASK_WORKERS: '1'
+      CHECK_FOR_UPDATES: 'false'
+    volumes:
+      - attachments:/usr/src/app/attachments
+    ports:
+      - '127.0.0.1:${WYG_TEST_PORT:-18000}:8000'
+
+volumes:
+  pg:
+  attachments:
