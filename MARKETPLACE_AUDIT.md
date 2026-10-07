@@ -38,3 +38,7 @@
 ## Verdict
 
 SHIPPABLE, no wrapper (stock image, start command override for volume ownership).
+
+Published 2026-10-07: https://railway.com/deploy/wygiwyh (template `fa7d8459-46a7-4565-a2cf-aecc48166e7f`, category
+Other). Live e2e over HTTPS on a clean-room deploy: 28/28 full run; 23/23 `--verify` after redeploying `db` and
+`web` (rows and the attachment file survived; the admin was not re-created).
